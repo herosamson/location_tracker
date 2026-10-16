@@ -1,69 +1,64 @@
 
 <?php
-header('Content-Type: application/json; charset=utf-8');
+header("Content-Type: application/json; charset=UTF-8");
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     http_response_code(405);
-    echo json_encode(['error' => 'Method not allowed.']);
+    echo json_encode(["error" => "POST requests only"]);
     exit;
 }
 
-$data = json_decode(file_get_contents('php://input'), true);
-
-if (!is_array($data)) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Invalid request data.']);
-    exit;
-}
-
-$latitude = filter_var($data['latitude'] ?? null, FILTER_VALIDATE_FLOAT);
-$longitude = filter_var($data['longitude'] ?? null, FILTER_VALIDATE_FLOAT);
-$accuracy = filter_var($data['accuracy'] ?? null, FILTER_VALIDATE_FLOAT);
+$data = json_decode(file_get_contents("php://input"), true);
 
 if (
-    $latitude === false || $latitude === null ||
-    $longitude === false || $longitude === null ||
-    $accuracy === false || $accuracy === null ||
-    $latitude < -90 || $latitude > 90 ||
-    $longitude < -180 || $longitude > 180 ||
-    $accuracy < 0
+    !is_array($data) ||
+    !isset($data["latitude"], $data["longitude"]) ||
+    !is_numeric($data["latitude"]) ||
+    !is_numeric($data["longitude"])
 ) {
     http_response_code(400);
-    echo json_encode(['error' => 'Invalid coordinates or accuracy.']);
+    echo json_encode(["error" => "Invalid coordinates"]);
+    exit;
+}
+
+$latitude = (float) $data["latitude"];
+$longitude = (float) $data["longitude"];
+$accuracy = isset($data["accuracy"]) && is_numeric($data["accuracy"])
+    ? (float) $data["accuracy"]
+    : null;
+
+if (
+    !is_finite($latitude) ||
+    !is_finite($longitude) ||
+    $latitude < -90 || $latitude > 90 ||
+    $longitude < -180 || $longitude > 180
+) {
+    http_response_code(400);
+    echo json_encode(["error" => "Coordinates out of range"]);
     exit;
 }
 
 try {
     $pdo = new PDO(
-        'mysql:host=host.docker.internal;port=3306;dbname=location_tracker;charset=utf8mb4',
-'root',
-        '',
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-        ]
+        "mysql:host=127.0.0.1;dbname=location_tracker;charset=utf8mb4",
+        "root",
+        "",
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
     $stmt = $pdo->prepare(
-        'INSERT INTO locations (latitude, longitude, accuracy)
-         VALUES (:latitude, :longitude, :accuracy)'
+        "INSERT INTO locations
+         (latitude, longitude, accuracy_meters)
+         VALUES (?, ?, ?)"
     );
 
-    $stmt->execute([
-        ':latitude' => $latitude,
-        ':longitude' => $longitude,
-        ':accuracy' => $accuracy
-    ]);
+    $stmt->execute([$latitude, $longitude, $accuracy]);
 
-    echo json_encode([
-        'success' => true,
-        'message' => 'Location saved successfully.',
-        'id' => $pdo->lastInsertId()
-    ]);
+    echo json_encode(["success" => true]);
+
 } catch (PDOException $e) {
-    error_log($e->getMessage());
     http_response_code(500);
-    echo json_encode([
-        'error' => 'Unable to save location to the database.'
-    ]);
+    error_log($e->getMessage());
+    echo json_encode(["error" => "Database operation failed"]);
 }
+?>

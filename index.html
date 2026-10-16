@@ -1,0 +1,323 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Location Tracker</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #111827;
+            color: #f9fafb;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 430px;
+            padding: 30px;
+            border-radius: 18px;
+            background: #1f2937;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            margin: 0 0 12px;
+            text-align: center;
+            font-size: 27px;
+        }
+
+        .description {
+            color: #9ca3af;
+            text-align: center;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 20px;
+            border: none;
+            border-radius: 10px;
+            background: #3b82f6;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            background: #2563eb;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .results {
+            display: none;
+            margin-top: 24px;
+            padding: 18px;
+            border-radius: 10px;
+            background: #111827;
+        }
+
+        .results p {
+            margin: 12px 0;
+            line-height: 1.6;
+            overflow-wrap: anywhere;
+        }
+
+        .value {
+            color: #60a5fa;
+        }
+
+        #status {
+            margin-top: 18px;
+            text-align: center;
+            color: #d1d5db;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        #status.error {
+            color: #fca5a5;
+        }
+
+        #status.success {
+            color: #86efac;
+        }
+
+        .map-link {
+            display: block;
+            margin-top: 18px;
+            padding: 12px;
+            text-align: center;
+            text-decoration: none;
+            background: #374151;
+            color: #93c5fd;
+            border-radius: 8px;
+        }
+
+        .map-link:hover {
+            background: #4b5563;
+        }
+
+        .privacy {
+            margin-top: 22px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #9ca3af;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <main class="container">
+
+        <h1>📍 Location Tracker</h1>
+
+        <p class="description">
+            Share your current location to retrieve your
+            coordinates and save them to the database.
+        </p>
+
+        <button type="button" id="locateButton">
+            Share My Location
+        </button>
+
+        <p id="status" role="status" aria-live="polite">
+            Click the button to begin. Your browser will
+            ask for permission to access your location.
+        </p>
+
+        <section class="results" id="results">
+
+            <p>
+                <strong>Latitude</strong><br>
+                <span class="value" id="latitude">—</span>
+            </p>
+
+            <p>
+                <strong>Longitude</strong><br>
+                <span class="value" id="longitude">—</span>
+            </p>
+
+            <p>
+                <strong>Accuracy</strong><br>
+                <span class="value" id="accuracy">—</span>
+            </p>
+
+            <p>
+                <strong>Saved at</strong><br>
+                <span class="value" id="timestamp">—</span>
+            </p>
+
+            <a
+                class="map-link"
+                id="mapLink"
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                View Location on Google Maps
+            </a>
+
+        </section>
+
+        <p class="privacy">
+            Your coordinates will be sent to the website's
+            PHP backend and stored in its configured database
+            after you choose to share your location.
+        </p>
+
+    </main>
+
+    <script>
+        const locateButton = document.getElementById("locateButton");
+        const statusText = document.getElementById("status");
+        const results = document.getElementById("results");
+
+        function showStatus(message, type = "") {
+            statusText.textContent = message;
+            statusText.className = type;
+        }
+
+        locateButton.addEventListener("click", function () {
+            if (!navigator.geolocation) {
+                showStatus(
+                    "Your browser does not support geolocation.",
+                    "error"
+                );
+                return;
+            }
+
+            locateButton.disabled = true;
+            locateButton.textContent = "Getting Location...";
+            showStatus("Requesting your location permission...");
+
+            navigator.geolocation.getCurrentPosition(
+                saveLocation,
+                handleLocationError,
+                {
+                    enableHighAccuracy: true,
+                    timeout: 20000,
+                    maximumAge: 0
+                }
+            );
+        });
+
+        async function saveLocation(position) {
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            showStatus("Saving your coordinates to the database...");
+
+            try {
+                const response = await fetch("save_location.php", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        latitude: latitude,
+                        longitude: longitude,
+                        accuracy: accuracy
+                    })
+                });
+
+                let data;
+
+                try {
+                    data = await response.json();
+                } catch {
+                    throw new Error(
+                        "The server returned an invalid response. Check PHP."
+                    );
+                }
+
+                if (!response.ok || !data.success) {
+                    throw new Error(
+                        data.error || "Unable to save coordinates."
+                    );
+                }
+
+                document.getElementById("latitude").textContent =
+                    latitude.toFixed(7);
+
+                document.getElementById("longitude").textContent =
+                    longitude.toFixed(7);
+
+                document.getElementById("accuracy").textContent =
+                    "Approximately " + Math.round(accuracy) + " meters";
+
+                document.getElementById("timestamp").textContent =
+                    new Date().toLocaleString();
+
+                document.getElementById("mapLink").href =
+                    "https://www.google.com/maps?q=" +
+                    encodeURIComponent(latitude + "," + longitude);
+
+                results.style.display = "block";
+
+                showStatus(
+                    "Location saved successfully to the database!",
+                    "success"
+                );
+
+                locateButton.textContent = "Refresh Location";
+
+            } catch (error) {
+                console.error("Location saving error:", error);
+
+                showStatus(
+                    error.message ||
+                    "Could not save your location. Check your PHP and MySQL connection.",
+                    "error"
+                );
+
+                locateButton.textContent = "Try Again";
+
+            } finally {
+                locateButton.disabled = false;
+            }
+        }
+
+        function handleLocationError(error) {
+            const messages = {
+                1: "Location permission denied. Allow location access in your browser settings if you want to continue.",
+                2: "Your location is unavailable. Check your device's location settings and try again.",
+                3: "The location request timed out. Please try again."
+            };
+
+            showStatus(
+                messages[error.code] ||
+                "Unable to retrieve your location.",
+                "error"
+            );
+
+            locateButton.disabled = false;
+            locateButton.textContent = "Try Again";
+        }
+    </script>
+
+</body>
+</html>
